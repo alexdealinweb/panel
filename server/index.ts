@@ -1,63 +1,135 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import dotenv from 'dotenv'
-
-dotenv.config()
 
 const app = express()
 const port = process.env.PORT || 3001
 
-const isReadOnly = process.env.ENHANCE_READ_ONLY !== 'false'
-const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
 app.use(cors())
 app.use(express.json())
 
-// Status endpoint — tells the frontend the current server config (no secrets)
-app.get('/api/status', (_req, res) => {
-  const apiUrl = process.env.ENHANCE_API_URL || ''
-  const apiKey = process.env.ENHANCE_API_KEY || ''
-  const orgId = process.env.ENHANCE_ORG_ID || ''
+// Login endpoint — proxies credentials to Enhance API and returns token
+app.post('/api/login', async (req, res) => {
+  const { email, password, token, action } = req.body
 
-  res.json({
-    configured: !!(apiUrl && apiKey),
-    apiUrl: apiUrl ? apiUrl.replace(/^(https?:\/\/[^/]+).*/, '$1') : '',
-    hasKey: !!apiKey,
-    orgId,
-    readOnly: isReadOnly,
-  })
+  const apiUrl = process.env.ENHANCE_API_URL
+  if (!apiUrl) {
+    res.status(500).json({ message: 'ENHANCE_API_URL is not configured' })
+    return
+  }
+
+  const normalizedUrl = apiUrl.replace(/\/+$/, '')
+
+  // Resolve org membership (second call after login)
+  if (action === 'resolve-org' && token) {
+    try {
+      // Get current login info
+      const loginRes = await fetch(`${normalizedUrl}/login/info`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!loginRes.ok) {
+        res.status(loginRes.status).json({ message: 'Failed to get login info' })
+        return
+      }
+
+      const loginInfo = await loginRes.json()
+
+      // Get memberships to find the orgId
+      const membersRes = await fetch(`${normalizedUrl}/logins/${loginInfo.id}/members`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (membersRes.ok) {
+        const members = await membersRes.json()
+        const items = members.items || members
+        // Pick the first Owner-role membership, or just the first one
+        const ownerMember = Array.isArray(items)
+          ? items.find((m: { roles?: string[] }) => m.roles?.includes('Owner')) || items[0]
+          : null
+        res.json({ orgId: ownerMember?.orgId || '' })
+        return
+      }
+
+      res.json({ orgId: '' })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(502).json({ message })
+    }
+    return
+  }
+
+  // Primary login flow
+  if (!email || !password) {
+    res.status(400).json({ message: 'Email and password are required' })
+    return
+  }
+
+  try {
+    const response = await fetch(`${normalizedUrl}/login/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      res.status(response.status).json({
+        message: body.message || body.error || `Authentication failed (${response.status})`,
+      })
+      return
+    }
+
+    // Token comes in the Set-Cookie header as "id0=<jwt>"
+    const setCookie = response.headers.get('set-cookie') || ''
+    const tokenMatch = setCookie.match(/id0=([^;]+)/)
+    const token = tokenMatch?.[1] || ''
+
+    if (!token) {
+      res.status(502).json({ message: 'No session token in response' })
+      return
+    }
+
+    const data = await response.json()
+    const memberships = data.memberships || []
+    const orgId = memberships[0]?.orgId || ''
+
+    res.json({ token, apiUrl: normalizedUrl, orgId })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    res.status(502).json({ message: `Cannot reach Enhance server: ${message}` })
+  }
 })
 
-// Proxy — credentials come ONLY from .env, never from the browser
-app.all('/api/proxy/*', async (req, res) => {
-  const apiUrl = process.env.ENHANCE_API_URL
-  const apiKey = process.env.ENHANCE_API_KEY
+// Status endpoint — lightweight health check
+app.get('/api/status', (_req, res) => {
+  res.json({ ok: true })
+})
 
-  if (!apiUrl || !apiKey) {
-    res.status(503).json({
-      error: 'Server not configured',
-      message: 'Set ENHANCE_API_URL and ENHANCE_API_KEY in the server .env file.',
+// Proxy — forwards request to Enhance API using token from client headers
+app.all('/api/proxy/*path', async (req, res) => {
+  const token = req.headers['x-enhance-token'] as string
+  const apiUrl = req.headers['x-enhance-url'] as string
+
+  if (!token || !apiUrl) {
+    res.status(401).json({
+      error: 'Not authenticated',
+      message: 'Missing authentication token or API URL.',
     })
     return
   }
 
-  // Read-only guard: block all write operations
-  if (isReadOnly && WRITE_METHODS.has(req.method)) {
-    res.status(403).json({
-      error: 'Read-only mode',
-      message: `${req.method} requests are blocked. The server is in read-only mode (ENHANCE_READ_ONLY=true in .env). This protects your live data from accidental changes.`,
-    })
-    return
-  }
-
-  const path = req.params[0] || ''
+  const rawPath = (req.params as Record<string, string | string[]>)['path'] || ''
+  const path = Array.isArray(rawPath) ? rawPath.join('/') : rawPath.replace(/,/g, '/')
   const queryString = req.url.includes('?') ? '?' + req.url.split('?')[1] : ''
   const targetUrl = `${apiUrl.replace(/\/$/, '')}/${path}${queryString}`
+
+  console.log(`[proxy] ${req.method} ${targetUrl}${req.method !== 'GET' ? ' body=' + JSON.stringify(req.body) : ''}`)
 
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Cookie': `id0=${token}`,
     }
 
     const fetchOptions: RequestInit = {
@@ -72,10 +144,15 @@ app.all('/api/proxy/*', async (req, res) => {
     const response = await fetch(targetUrl, fetchOptions)
     const contentType = response.headers.get('content-type') || ''
 
+    if (!response.ok) {
+      console.log(`[proxy] ← ${response.status} ${targetUrl}`)
+    }
+
     res.status(response.status)
 
     if (contentType.includes('application/json')) {
       const data = await response.json()
+      if (!response.ok) console.log(`[proxy] ← body:`, JSON.stringify(data))
       res.json(data)
     } else {
       const text = await response.text()
@@ -90,9 +167,6 @@ app.all('/api/proxy/*', async (req, res) => {
 app.listen(port, () => {
   console.log(``)
   console.log(`  EnhanceUI proxy running on port ${port}`)
-  console.log(`  API URL:   ${process.env.ENHANCE_API_URL ? '✓ configured' : '✗ not set'}`)
-  console.log(`  API Key:   ${process.env.ENHANCE_API_KEY ? '✓ configured' : '✗ not set'}`)
-  console.log(`  Org ID:    ${process.env.ENHANCE_ORG_ID || '(not set)'}`)
-  console.log(`  Read-Only: ${isReadOnly ? '✓ ON — write operations blocked' : '✗ OFF — writes allowed!'}`)
+  console.log(`  Auth mode: user login (no hardcoded API key)`)
   console.log(``)
 })

@@ -1,9 +1,7 @@
 import { useLocation, Link } from 'react-router-dom'
-import { Settings, ChevronRight, FlaskConical, Shield, ShieldAlert } from 'lucide-react'
+import { Settings, ChevronRight, LogOut, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getMode } from '@/api/enhance/client'
-import { useEffect, useState } from 'react'
-import axios from 'axios'
+import { useAuth } from '@/contexts/AuthContext'
 
 function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
   const segments = pathname.split('/').filter(Boolean)
@@ -38,15 +36,8 @@ function getBreadcrumbs(pathname: string): { label: string; href: string }[] {
 
 export function TopBar() {
   const location = useLocation()
+  const { session, logout } = useAuth()
   const breadcrumbs = getBreadcrumbs(location.pathname)
-  const mode = getMode()
-  const [readOnly, setReadOnly] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    if (mode === 'live') {
-      axios.get('/api/status').then((r) => setReadOnly(r.data.readOnly ?? null)).catch(() => {})
-    }
-  }, [mode])
 
   return (
     <header className="h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 sticky top-0 z-40">
@@ -68,27 +59,20 @@ export function TopBar() {
         ))}
       </div>
       <div className="flex items-center gap-3">
-        {/* Mode badge */}
-        <Link to="/settings">
-          {mode === 'demo' ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 px-3 py-1 text-xs font-medium text-blue-600">
-              <FlaskConical className="h-3 w-3" /> Demo
-            </span>
-          ) : readOnly ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-600">
-              <Shield className="h-3 w-3" /> Read-Only
-            </span>
-          ) : readOnly === false ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-xs font-medium text-amber-600">
-              <ShieldAlert className="h-3 w-3" /> Live
-            </span>
-          ) : null}
-        </Link>
+        {session && (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <User className="h-3.5 w-3.5" />
+            <span>{session.email}</span>
+          </div>
+        )}
         <Link to="/settings">
           <Button variant="ghost" size="icon">
             <Settings className="h-4 w-4" />
           </Button>
         </Link>
+        <Button variant="ghost" size="icon" onClick={logout} title="Sign out">
+          <LogOut className="h-4 w-4" />
+        </Button>
       </div>
     </header>
   )

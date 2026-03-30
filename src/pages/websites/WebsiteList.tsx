@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useWebsites, useDeleteWebsite } from '@/api/hooks/useWebsites'
+import { AddWebsiteDialog } from './WebsiteCreate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -16,10 +17,11 @@ export function WebsiteList() {
   const deleteMutation = useDeleteWebsite()
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; domain: string } | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const websites = data?.items || []
   const filtered = websites.filter((w) =>
-    w.domain?.toLowerCase().includes(search.toLowerCase())
+    w.domain?.domain?.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
@@ -29,12 +31,10 @@ export function WebsiteList() {
           <h1 className="text-3xl font-bold tracking-tight">Websites</h1>
           <p className="text-muted-foreground">Manage your hosted websites.</p>
         </div>
-        <Link to="/websites/create">
-          <Button>
-            <Plus className="h-4 w-4" />
-            Create Website
-          </Button>
-        </Link>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="h-4 w-4" />
+          Add Website
+        </Button>
       </div>
 
       <div className="flex items-center gap-4">
@@ -62,9 +62,9 @@ export function WebsiteList() {
           description={search ? 'Try a different search term.' : 'Create your first website to get started.'}
           action={
             !search && (
-              <Link to="/websites/create">
-                <Button><Plus className="h-4 w-4" /> Create Website</Button>
-              </Link>
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4" /> Add Website
+              </Button>
             )
           }
         />
@@ -84,7 +84,7 @@ export function WebsiteList() {
               <TableRow key={site.id}>
                 <TableCell>
                   <Link to={`/websites/${site.id}`} className="font-medium hover:underline">
-                    {site.domain}
+                    {site.domain?.domain || site.id}
                   </Link>
                 </TableCell>
                 <TableCell>
@@ -100,13 +100,13 @@ export function WebsiteList() {
                       <MoreVertical className="h-4 w-4 text-muted-foreground" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => window.open(`https://${site.domain}`, '_blank')}>
+                      <DropdownMenuItem onClick={() => window.open(`https://${site.domain?.domain}`, '_blank')}>
                         <ExternalLink className="h-4 w-4 mr-2" /> Visit Site
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         variant="destructive"
-                        onClick={() => setDeleteTarget({ id: site.id, domain: site.domain })}
+                        onClick={() => setDeleteTarget({ id: site.id, domain: site.domain?.domain || site.id })}
                       >
                         <Trash2 className="h-4 w-4 mr-2" /> Delete
                       </DropdownMenuItem>
@@ -131,6 +131,8 @@ export function WebsiteList() {
         }}
         loading={deleteMutation.isPending}
       />
+
+      <AddWebsiteDialog open={showCreate} onOpenChange={setShowCreate} />
     </div>
   )
 }

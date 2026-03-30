@@ -5,7 +5,7 @@ import type {
   Database, DatabaseCreate, FtpUser, FtpUserCreate,
   Backup, SslCert, SslCertUpload,
   WordPressInstall, WordPressPlugin,
-  Server, ServerStatus, Customer, CustomerCreate, Org,
+  Server, ServerStatus, Customer, CustomerCreate, Org, Plan,
 } from './types'
 
 // Orgs
@@ -27,7 +27,7 @@ export const websites = {
   },
   create: (data: WebsiteCreate) => {
     const orgId = getOrgId()
-    return apiRequest<Website>('POST', `orgs/${orgId}/websites`, data)
+    return apiRequest<{ id: string }>('POST', `orgs/${orgId}/websites`, data)
   },
   update: (websiteId: string, data: Partial<Website>) => {
     const orgId = getOrgId()
@@ -207,6 +207,27 @@ export const wordpress = {
   },
 }
 
+// Installable apps
+export const installableApps = {
+  list: () => apiRequest<{ items: { app: string; version: string; isLatest: boolean }[] }>('GET', 'utils/installable-apps'),
+}
+
+// Website apps
+export const websiteApps = {
+  install: (websiteId: string, data: { app: string; version?: string; adminUsername: string; adminPassword: string; adminEmail: string }) => {
+    const orgId = getOrgId()
+    return apiRequest<{ id: string }>('POST', `orgs/${orgId}/websites/${websiteId}/apps`, data)
+  },
+}
+
+// Subscriptions
+export const subscriptions = {
+  list: () => {
+    const orgId = getOrgId()
+    return apiRequest<{ items: { id: number; planId: number; planName: string; status: string }[] }>('GET', `orgs/${orgId}/subscriptions`)
+  },
+}
+
 // Servers
 export const servers = {
   list: () => apiRequest<{ items: Server[] }>('GET', 'servers'),
@@ -214,6 +235,14 @@ export const servers = {
   getStatus: (serverId: string) => apiRequest<ServerStatus>('GET', `servers/${serverId}/status`),
   getDiskUsage: (serverId: string) => apiRequest<unknown>('GET', `servers/${serverId}/disk-usage`),
   getMemoryUsage: (serverId: string) => apiRequest<unknown>('GET', `servers/${serverId}/memory-usage`),
+}
+
+// Plans
+export const plans = {
+  list: () => {
+    const orgId = getOrgId()
+    return apiRequest<{ items: Plan[] }>('GET', `orgs/${orgId}/plans`)
+  },
 }
 
 // Customers
@@ -226,9 +255,36 @@ export const customers = {
     const orgId = getOrgId()
     return apiRequest<Customer>('GET', `orgs/${orgId}/customers/${customerId}`)
   },
-  create: (data: CustomerCreate) => {
+  /** Full customer creation: org → login → member → subscription */
+  create: async (data: CustomerCreate) => {
     const orgId = getOrgId()
-    return apiRequest<Customer>('POST', `orgs/${orgId}/customers`, data)
+
+    // 1. Create customer organization
+    const customer = await apiRequest<{ id: string }>('POST', `orgs/${orgId}/customers`, {
+      name: data.name,
+    })
+
+    // 2. Create login (orgId as query param — proxy appends it)
+    const login = await apiRequest<{ id: string }>('POST', `logins?orgId=${customer.id}`, {
+      name: data.email,
+      email: data.email,
+      password: data.password,
+    })
+
+    // 3. Add login as Owner member of the customer org
+    await apiRequest<{ id: string }>('POST', `orgs/${customer.id}/members`, {
+      loginId: login.id,
+      roles: ['Owner'],
+    })
+
+    // 4. Subscribe to plan (if selected)
+    if (data.planId) {
+      await apiRequest<{ id: number }>('POST', `orgs/${orgId}/customers/${customer.id}/subscriptions`, {
+        planId: data.planId,
+      })
+    }
+
+    return customer
   },
   update: (customerId: string, data: Partial<Customer>) => {
     const orgId = getOrgId()

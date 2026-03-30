@@ -26,7 +26,7 @@ function OverviewTab({ website }: { website: { id: string; domain: string; statu
       <Card>
         <CardHeader><CardTitle className="text-sm">Website Info</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Domain</span><span>{website.domain}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Domain</span><span>{website.domain?.domain}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge variant="success">{website.status || 'Active'}</Badge></div>
           <div className="flex justify-between"><span className="text-muted-foreground">PHP Version</span><span>{website.phpVersion || '-'}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Server</span><span>{website.serverIp || '-'}</span></div>
@@ -39,7 +39,7 @@ function OverviewTab({ website }: { website: { id: string; domain: string; statu
       <Card>
         <CardHeader><CardTitle className="text-sm">Quick Actions</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          <Button variant="outline" className="w-full justify-start" onClick={() => window.open(`https://${website.domain}`, '_blank')}>
+          <Button variant="outline" className="w-full justify-start" onClick={() => window.open(`https://${website.domain?.domain}`, '_blank')}>
             <ExternalLink className="h-4 w-4 mr-2" /> Visit Website
           </Button>
         </CardContent>
@@ -284,10 +284,10 @@ export function WebsiteDetail() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{website.domain}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{website.domain?.domain}</h1>
           <p className="text-muted-foreground">Website management</p>
         </div>
-        <Button variant="outline" onClick={() => window.open(`https://${website.domain}`, '_blank')}>
+        <Button variant="outline" onClick={() => window.open(`https://${website.domain?.domain}`, '_blank')}>
           <ExternalLink className="h-4 w-4" /> Visit
         </Button>
       </div>

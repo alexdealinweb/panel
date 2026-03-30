@@ -1,22 +1,47 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 
-export type AppMode = 'live' | 'demo'
-
-let currentMode: AppMode = (localStorage.getItem('enhance_mode') as AppMode) || 'demo'
-let cachedOrgId: string = ''
-
-export function getMode(): AppMode {
-  return currentMode
-}
-
-export function setMode(mode: AppMode) {
-  currentMode = mode
-  localStorage.setItem('enhance_mode', mode)
-}
+let cachedOrgId = ''
+let cachedToken = ''
+let cachedApiUrl = ''
 
 const proxyClient = axios.create({
   baseURL: '/api/proxy',
 })
+
+// Attach token + apiUrl on every request
+proxyClient.interceptors.request.use((config) => {
+  if (cachedToken) {
+    config.headers['X-Enhance-Token'] = cachedToken
+  }
+  if (cachedApiUrl) {
+    config.headers['X-Enhance-Url'] = cachedApiUrl
+  }
+  return config
+})
+
+// On 401, clear session and redirect to login
+proxyClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('enhance_session')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export function configureClient(token: string, apiUrl: string, orgId: string) {
+  cachedToken = token
+  cachedApiUrl = apiUrl
+  cachedOrgId = orgId
+}
+
+export function resetClient() {
+  cachedToken = ''
+  cachedApiUrl = ''
+  cachedOrgId = ''
+}
 
 export async function apiRequest<T>(
   method: string,
@@ -24,11 +49,6 @@ export async function apiRequest<T>(
   data?: unknown,
   config?: AxiosRequestConfig
 ): Promise<T> {
-  if (currentMode === 'demo') {
-    const { handleDemoRequest } = await import('./demo')
-    return handleDemoRequest<T>(method, path, data)
-  }
-
   const response = await proxyClient.request<T>({
     method,
     url: path,
@@ -39,24 +59,27 @@ export async function apiRequest<T>(
 }
 
 export function getOrgId(): string {
-  return cachedOrgId || 'demo-org'
+  return cachedOrgId
 }
 
 export function setOrgId(id: string) {
   cachedOrgId = id
 }
 
-export async function fetchServerStatus(): Promise<{
-  configured: boolean
-  apiUrl: string
-  hasKey: boolean
-  orgId: string
-}> {
-  const res = await axios.get('/api/status')
-  if (res.data.orgId) {
-    cachedOrgId = res.data.orgId
+// Restore session from localStorage on module load
+function restoreSession() {
+  try {
+    const raw = localStorage.getItem('enhance_session')
+    if (!raw) return
+    const session = JSON.parse(raw)
+    if (session.token && session.apiUrl) {
+      configureClient(session.token, session.apiUrl, session.orgId || '')
+    }
+  } catch {
+    // ignore
   }
-  return res.data
 }
+
+restoreSession()
 
 export { proxyClient }

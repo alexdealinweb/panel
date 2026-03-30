@@ -1,23 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const apiUrl = process.env.ENHANCE_API_URL
-  const apiKey = process.env.ENHANCE_API_KEY
-  const isReadOnly = process.env.ENHANCE_READ_ONLY !== 'false'
+  const token = req.headers['x-enhance-token'] as string
+  const apiUrl = req.headers['x-enhance-url'] as string
 
-  if (!apiUrl || !apiKey) {
-    return res.status(503).json({
-      error: 'Server not configured',
-      message: 'Set ENHANCE_API_URL and ENHANCE_API_KEY in Vercel environment variables.',
-    })
-  }
-
-  if (isReadOnly && WRITE_METHODS.has(req.method || '')) {
-    return res.status(403).json({
-      error: 'Read-only mode',
-      message: `${req.method} requests are blocked. Set ENHANCE_READ_ONLY=false in environment variables to allow writes.`,
+  if (!token || !apiUrl) {
+    return res.status(401).json({
+      error: 'Not authenticated',
+      message: 'Missing authentication token or API URL.',
     })
   }
 
@@ -29,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Cookie': `id0=${token}`,
     }
 
     const fetchOptions: RequestInit = {

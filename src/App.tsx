@@ -1,13 +1,14 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Layout } from '@/components/layout/Layout'
 import { Skeleton } from '@/components/ui/skeleton'
 
+const LoginPage = lazy(() => import('@/pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
 const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const WebsiteList = lazy(() => import('@/pages/websites/WebsiteList').then((m) => ({ default: m.WebsiteList })))
-const WebsiteCreate = lazy(() => import('@/pages/websites/WebsiteCreate').then((m) => ({ default: m.WebsiteCreate })))
 const WebsiteDetail = lazy(() => import('@/pages/websites/WebsiteDetail').then((m) => ({ default: m.WebsiteDetail })))
 const DomainList = lazy(() => import('@/pages/domains/DomainList').then((m) => ({ default: m.DomainList })))
 const DnsEditor = lazy(() => import('@/pages/domains/DnsEditor').then((m) => ({ default: m.DnsEditor })))
@@ -43,35 +44,59 @@ function PageLoader() {
   )
 }
 
+function RequireAuth() {
+  const { isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  return <Outlet />
+}
+
+function GuestOnly() {
+  const { isAuthenticated } = useAuth()
+  if (isAuthenticated) return <Navigate to="/" replace />
+  return <Outlet />
+}
+
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="websites" element={<WebsiteList />} />
-              <Route path="websites/create" element={<WebsiteCreate />} />
-              <Route path="websites/:id" element={<WebsiteDetail />} />
-              <Route path="domains" element={<DomainList />} />
-              <Route path="domains/:domainId/dns" element={<DnsEditor />} />
-              <Route path="email" element={<EmailList />} />
-              <Route path="email/create" element={<EmailCreate />} />
-              <Route path="databases" element={<DatabaseList />} />
-              <Route path="databases/create" element={<DatabaseCreate />} />
-              <Route path="ftp" element={<FtpList />} />
-              <Route path="backups" element={<BackupList />} />
-              <Route path="ssl" element={<SSLManager />} />
-              <Route path="wordpress" element={<WordPressList />} />
-              <Route path="servers" element={<ServerOverview />} />
-              <Route path="customers" element={<CustomerList />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-      <Toaster theme="light" position="bottom-right" richColors />
-    </QueryClientProvider>
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public routes */}
+              <Route element={<GuestOnly />}>
+                <Route path="login" element={<LoginPage />} />
+              </Route>
+
+              {/* Protected routes */}
+              <Route element={<RequireAuth />}>
+                <Route element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="websites" element={<WebsiteList />} />
+                  <Route path="websites/:id" element={<WebsiteDetail />} />
+                  <Route path="domains" element={<DomainList />} />
+                  <Route path="domains/:domainId/dns" element={<DnsEditor />} />
+                  <Route path="email" element={<EmailList />} />
+                  <Route path="email/create" element={<EmailCreate />} />
+                  <Route path="databases" element={<DatabaseList />} />
+                  <Route path="databases/create" element={<DatabaseCreate />} />
+                  <Route path="ftp" element={<FtpList />} />
+                  <Route path="backups" element={<BackupList />} />
+                  <Route path="ssl" element={<SSLManager />} />
+                  <Route path="wordpress" element={<WordPressList />} />
+                  <Route path="servers" element={<ServerOverview />} />
+                  <Route path="customers" element={<CustomerList />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
+              </Route>
+
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+        <Toaster theme="light" position="bottom-right" richColors />
+      </QueryClientProvider>
+    </AuthProvider>
   )
 }

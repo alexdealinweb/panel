@@ -1,7 +1,21 @@
-export interface Website {
+export interface WebsiteDomain {
   id: string
   domain: string
+  documentRoot?: string
+  kind?: string
+  cloudflareStatus?: string
+}
+
+export interface Website {
+  id: string
+  domain: WebsiteDomain
+  aliases?: WebsiteDomain[]
+  subdomains?: WebsiteDomain[]
+  subscriptionId?: number
+  planId?: number
   status: string
+  colorCode?: string
+  size?: number
   serverIp?: string
   phpVersion?: string
   appServerId?: string
@@ -11,7 +25,6 @@ export interface Website {
   updatedAt?: string
   suspendedAt?: string
   plan?: string
-  diskUsage?: number
 }
 
 export interface WebsiteCreate {
@@ -172,16 +185,30 @@ export interface ServerStatus {
 export interface Customer {
   id: string
   orgId?: string
+  parentId?: string
   name?: string
   email?: string
   status?: string
   createdAt?: string
+  subscriptionsCount?: number
+  websitesCount?: number
+  locale?: string
 }
 
 export interface CustomerCreate {
   name: string
   email: string
-  password?: string
+  password: string
+  planId?: number
+}
+
+export interface Plan {
+  id: number
+  name: string
+  orgId?: string
+  planType?: string
+  subscriptionsCount?: number
+  createdAt?: string
 }
 
 export interface Org {
@@ -197,4 +224,30 @@ export interface PaginatedResponse<T> {
   total?: number
   offset?: number
   limit?: number
+}
+
+// Auth types
+export interface AuthSession {
+  token: string
+  apiUrl: string
+  orgId: string
+  email: string
+}
+
+export interface LoginCredentials {
+  email: string
+  password: string
+}
+
+export interface LoginResponse {
+  token: string
+  orgId: string
+}
+
+export interface MemberInfo {
+  id: string
+  orgId: string
+  loginId: string
+  roles: string[]
+  email?: string
 }
