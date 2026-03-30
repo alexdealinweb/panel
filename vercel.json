@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/api/status", "destination": "/api/status" },
+    { "source": "/api/proxy/(.*)", "destination": "/api/proxy/[...path]" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}
