@@ -33,15 +33,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const response = await fetch(targetUrl, fetchOptions)
     const contentType = response.headers.get('content-type') || ''
+    const text = await response.text()
+
+    console.log(`[proxy] ${req.method} ${targetUrl} → ${response.status} (${contentType}) ${text.length} bytes`)
 
     res.status(response.status)
 
-    if (contentType.includes('application/json')) {
-      const data = await response.json()
-      res.json(data)
+    if (contentType.includes('application/json') && text) {
+      res.json(JSON.parse(text))
     } else {
-      const text = await response.text()
-      res.send(text)
+      res.send(text || '')
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
